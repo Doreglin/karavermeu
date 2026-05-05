@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Şans Çarkı</title>
+    <style>
+        /* Temel Sıfırlama ve Font */
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        body { display: flex; height: 100vh; overflow: hidden; background-color: #f4f7f6; }
+
+        /* Sol ve Orta Alan (Ana İçerik) */
+        .main-content { flex: 1; display: flex; flex-direction: column; position: relative; }
+
+        /* Sol Üst Bar (Giriş Alanı) */
+        .top-bar { padding: 20px; display: flex; gap: 10px; background: white; box-shadow: 0 2px 10px rgba(0,0,0,0.05); z-index: 10; }
+        #textInput { padding: 12px; font-size: 16px; border: 1px solid #ccc; border-radius: 6px; width: 300px; outline: none; }
+        #textInput:focus { border-color: #3498db; }
+        #addBtn { padding: 10px 20px; font-size: 24px; font-weight: bold; background: #3498db; color: white; border: none; border-radius: 6px; cursor: pointer; transition: 0.2s; }
+        #addBtn:hover { background: #2980b9; }
+
+        /* Orta Alan (Çark ve Sonuç) */
+        .center-area { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; position: relative; }
+        
+        /* Çark Konteyneri ve Ok */
+        .wheel-container { position: relative; width: 350px; height: 350px; margin-bottom: 20px; cursor: pointer; }
+        
+        /* Çarkın üstündeki gösterge oku */
+        .wheel-arrow {
+            position: absolute; top: -15px; left: 50%; transform: translateX(-50%);
+            width: 0; height: 0;
+            border-left: 20px solid transparent;
+            border-right: 20px solid transparent;
+            border-top: 35px solid #2c3e50;
+            z-index: 2; filter: drop-shadow(0 4px 4px rgba(0,0,0,0.2));
+        }
+
+        /* Çark Çizim Alanı (Canvas) */
+        #wheel { width: 100%; height: 100%; border-radius: 50%; box-shadow: 0 10px 20px rgba(0,0,0,0.15); border: 5px solid white; display: block; }
+        
+        /* Ekrana Çıkan Kazanma Mesajı */
+        #resultMsg { font-size: 28px; font-weight: bold; color: #2c3e50; min-height: 40px; text-align: center; margin-top: 20px;}
+
+        /* Sağ Menü */
+        .right-menu { width: 350px; background: white; border-left: 2px solid #e0e0e0; padding: 20px; overflow-y: auto; box-shadow: -2px 0 10px rgba(0,0,0,0.02); }
+        .right-menu h3 { margin-bottom: 20px; color: #333; text-align: center; border-bottom: 2px solid #f0f0f0; padding-bottom: 10px; }
+        
+        /* Menüye Eklenen Öğeler */
+        .menu-item { display: flex; justify-content: space-between; align-items: center; background: #f8f9fa; padding: 15px; margin-bottom: 12px; border-radius: 8px; border: 1px solid #eee; }
+        .item-text { font-weight: bold; color: #2c3e50; font-size: 16px; word-break: break-all; padding-right: 10px; }
+        .delete-btn { background: #e74c3c; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 14px; transition: 0.2s; flex-shrink: 0;}
+        .delete-btn:hover { background: #c0392b; }
+    </style>
+</head>
+<body>
+
+    <div class="main-content">
+        <div class="top-bar">
+            <input type="text" id="textInput" placeholder="Çarka bir seçenek ekleyin..." onkeypress="if(event.key === 'Enter') document.getElementById('addBtn').click();">
+            <button id="addBtn">+</button>
+        </div>
+        <div class="center-area">
+            <div class="wheel-container" onclick="spinWheel()" title="Çevirmek için tıkla!">
+                <div class="wheel-arrow"></div>
+                <canvas id="wheel" width="400" height="400"></canvas>
+            </div>
+            <div id="resultMsg">Seçenek ekleyin ve çarkı çevirmek için tıklayın.</div>
+        </div>
+    </div>
+
+    <div class="right-menu">
+        <h3>Çarktaki Seçenekler</h3>
+        <div id="menu"></div>
+    </div>
+
+    <script>
+        const addBtn = document.getElementById('addBtn');
+        const textInput = document.getElementById('textInput');
+        const menu = document.getElementById('menu');
+        const canvas = document.getElementById('wheel');
+        const ctx = canvas.getContext('2d');
+        const resultMsg = document.getElementById('resultMsg');
+
+        // Çarktaki öğeleri ve renk paletini tutan diziler
+        let items = [];
+        const colors = ["#e74c3c", "#f1c40f", "#2ecc71", "#3498db", "#9b59b6", "#e67e22", "#1abc9c", "#34495e"];
+        
+        let currentRotation = 0; // Çarkın mevcut dönüş derecesi
+        let isSpinning = false; // Çark dönerken tekrar tıklanmasını engellemek için
+
+        // 1. Yeni Öğeyi Listeye Ekleme
+        addBtn.onclick = function() {
+            const yazi = textInput.value.trim();
+            if (yazi === "" || items.includes(yazi)) return; // Boş veya aynısı varsa ekleme
+
+            items.push(yazi);
+            textInput.value = '';
+            guncelleMenu();
+            carkiCiz();
+        };
+
+        // 2. Sağ Menüyü Güncelleme ve Silme İşlemleri
+        function guncelleMenu() {
+            menu.innerHTML = ''; // Menüyü temizle
+            items.forEach((item, index) => {
+                const itemDiv = document.createElement('div');
+                itemDiv.className = 'menu-item';
+                
+                itemDiv.innerHTML = `
+                    <div class="item-text">${item}</div>
+                    <button class="delete-btn" onclick="elemanSil(${index})">Sil</button>
+                `;
+                menu.appendChild(itemDiv);
+            });
+        }
+
+        function elemanSil(index) {
+            if(isSpinning) return; // Çark dönerken silme işlemi yapılamasın
+            items.splice(index, 1);
+            guncelleMenu();
+            carkiCiz();
+            resultMsg.innerText = items.length === 0 ? "Seçenek ekleyin." : "Çevirmek için tıklayın.";
+        }
+
+        // 3. Çarkı Canvas Üzerine Çizme
+        function carkiCiz() {
+            const cw = canvas.width;
+            const ch = canvas.height;
+            const yariCap = cw / 2;
+            
+            ctx.clearRect(0, 0, cw, ch); // Önceki çizimi temizle
+            
+            if (items.length === 0) return; // Öğesizse çizme
+
+            const dilimAcisi = (2 * Math.PI) / items.length; // Her dilimin açısı (Radyan)
+
+            for (let i = 0; i < items.length; i++) {
+                ctx.beginPath();
+                ctx.fillStyle = colors[i % colors.length]; // Renkleri sırayla al
+                ctx.moveTo(yariCap, yariCap);
+                ctx.arc(yariCap, yariCap, yariCap, i * dilimAcisi, (i + 1) * dilimAcisi);
+                ctx.fill();
+
+                // Dilimlerin İçine Yazı Yazma
+                ctx.save();
+                ctx.translate(yariCap, yariCap); // Merkezi canvas'ın ortasına al
+                ctx.rotate(i * dilimAcisi + dilimAcisi / 2); // Yazıyı dilimin tam ortasına döndür
+                ctx.textAlign = "right";
+                ctx.fillStyle = "#fff";
+                ctx.font = "bold 22px 'Segoe UI'";
+                ctx.fillText(items[i], yariCap - 30, 8); // Yazıyı yerleştir
+                ctx.restore();
+            }
+        }
+
+        // 4. Çarkı Çevirme İşlemi
+        function spinWheel() {
+            if (isSpinning || items.length === 0) return;
+            
+            isSpinning = true;
+            resultMsg.innerHTML = "Çark dönüyor... 🎲";
+            
+            // Rastgele bir derece belirle (En az 5 tam tur atsın: 5 * 360 = 1800)
+            const rastgeleDerece = Math.floor(Math.random() * 360) + 1800;
+            currentRotation += rastgeleDerece; // Mevcut dönüşün üstüne ekle
+
+            // CSS ile canvas'ı döndür (Animasyonlu)
+            canvas.style.transition = "transform 4s cubic-bezier(0.25, 0.1, 0.25, 1)";
+            canvas.style.transform = `rotate(${currentRotation}deg)`;
+        }
+
+        // 5. Çarkın Dönüşü Bitince Kazananı Hesaplama
+        canvas.addEventListener('transitionend', () => {
+            isSpinning = false;
+            
+            // Çark durduğunda üstte kalan oku hesaplayan matematik
+            // Canvas başlangıç açısı 0 derece(sağ taraf) olduğu için, üstteki ok 270 dereceye denk gelir.
+            const gercekDonus = currentRotation % 360;
+            const dilimDerecesi = 360 / items.length;
+            
+            // Ok açısı ve çarkın dönüşünü dengeleyerek hangi dilimde olduğunu bulma
+            const okDerecesi = 270; 
+            const izafiDerece = (okDerecesi - gercekDonus + 360) % 360;
+            const kazananIndex = Math.floor(izafiDerece / dilimDerecesi);
+
+            // Sonucu Yazdır
+            resultMsg.innerHTML = `<span style="color: #27ae60;">🎉 KAZANAN: ${items[kazananIndex]}! 🎉</span>`;
+        });
+
+    </script>
+</body>
+</html>

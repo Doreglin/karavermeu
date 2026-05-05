@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kutu Yakalama Oyunu</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f0f2f5;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            text-align: center;
+        }
+        .container {
+            background-color: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+            width: 90%;
+            max-width: 600px;
+        }
+        .hidden {
+            display: none !important;
+        }
+        input, select, button {
+            padding: 10px;
+            margin: 10px 0;
+            width: 100%;
+            box-sizing: border-box;
+            font-size: 16px;
+            border-radius: 5px;
+            border: 1px solid #ccc;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            cursor: pointer;
+            font-weight: bold;
+            transition: background-color 0.3s;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        #oyun-alani {
+            position: relative;
+            width: 100%;
+            height: 400px;
+            background-color: #e9ecef;
+            border: 2px solid #ced4da;
+            border-radius: 5px;
+            overflow: hidden;
+            margin-bottom: 20px;
+        }
+        .kutu {
+            position: absolute;
+            width: 50px;
+            height: 50px;
+            background-color: #dc3545;
+            cursor: pointer;
+            border-radius: 5px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+            transition: transform 0.1s;
+        }
+        .kutu:active {
+            transform: scale(0.9);
+        }
+        .bilgi-paneli {
+            display: flex;
+            justify-content: space-between;
+            font-size: 18px;
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+        #liderlik-tablosu {
+            list-style-type: none;
+            padding: 0;
+        }
+        #liderlik-tablosu li {
+            padding: 10px;
+            border-bottom: 1px solid #eee;
+        }
+        .birinci {
+            font-size: 32px;
+            font-weight: bold;
+            color: #28a745;
+            text-transform: uppercase
+        }
+        .digerleri {
+            font-size: 18px;
+            color: #495057;
+        }
+    </style>
+</head>
+<body>
+    
+    <div class="container">
+        <div id="ayar-ekrani">
+            <h2>Kutu Yakalama Oyunu</h2>
+            <label for="oyuncu-sayisi">Kaç Kişi Oynayacak?</label>
+            <input type="number" id="oyuncu-sayisi" min="1" value="1">
+
+            <label for="zorluk">Zorluk Derecesi:</label>
+            <select id="zorluk">
+                <option value="1500">Kolay (1.5 saniye)</option>
+                <option value="1000">Orta (1 saniye)</option>
+                <option value="500">Zor (0.5 saniye)</option>
+            </select>
+
+            <button onclick="isimEkraninaGec()">İleri</button>
+        </div>
+
+        <div id="isim-ekrani" class="hidden">
+            <h2>Oyuncu İsimleri</h2>
+            <div id="isim-girisleri"></div>
+            <button onclick="oyunuBaslat()">Oyuna Başla</button>
+        </div>
+
+        <div id="oyun-ekrani" class="hidden">
+            <div class="bilgi-paneli">
+                <span id="aktif-oyuncu-adi">Oyuncu: </span>
+                <span id="kalan-sure">Süre: 15</span>
+                <span id="guncel-puan">Puan: 0</span>
+            </div>
+            <div id="oyun-alani"></div>
+        </div>
+
+        <div id="sonuc-ekrani" class="hidden">
+            <h2>Oyun Bitti! Liderlik Tablosu</h2>
+            <ul id="liderlik-tablosu"></ul>
+            <button onclick="location.reload()">Tekrar Oyna</button>
+        </div>
+    </div>
+
+    <script>
+        let oyuncular = [];
+        let aktifOyuncuIndeksi = 0;
+        let zorlukSuresi = 1000; // Varsayılan milisaniye
+        let kalanZaman = 15;
+        let aktifPuan = 0;
+
+        let oyuncuZamanlayici;
+        let kutuZamanlayici;
+        let mevcutKutu = null;
+
+        const ayarEkrani = document.getElementById('ayar-ekrani');
+        const isimEkrani = document.getElementById('isim-ekrani');
+        const oyunEkrani = document.getElementById('oyun-ekrani');
+        const sonucEkrani = document.getElementById('sonuc-ekrani');
+        const oyunAlani = document.getElementById('oyun-alani');
+
+        // 1. İsim Giriş Ekranını Hazırla
+        function isimEkraninaGec() {
+            const kisiSayisi = document.getElementById('oyuncu-sayisi').value;
+            zorlukSuresi = parseInt(document.getElementById('zorluk').value);
+
+            if (kisiSayisi < 1) {
+                alert("En az 1 kişi oynamalıdır!");
+                return;
+            }
+
+            const isimGirisleriDiv = document.getElementById('isim-girisleri');
+            isimGirisleriDiv.innerHTML = ''; // Önceki girişleri temizle
+
+            for (let i = 0; i < kisiSayisi; i++) {
+                isimGirisleriDiv.innerHTML += `<input type="text" id="oyuncu-isim-${i}" placeholder="${i + 1}. Oyuncu İsmi" required>`;
+            }
+
+            ayarEkrani.classList.add('hidden');
+            isimEkrani.classList.remove('hidden');
+        }
+
+        // 2. Oyuncuları Kaydet ve İlk Turu Başlat
+        function oyunuBaslat() {
+            const kisiSayisi = document.getElementById('oyuncu-sayisi').value;
+            oyuncular = [];
+
+            for (let i = 0; i < kisiSayisi; i++) {
+                const isim = document.getElementById(`oyuncu-isim-${i}`).value || `Oyuncu ${i + 1}`;
+                oyuncular.push({ isim: isim, puan: 0 });
+            }
+            
+            isimEkrani.classList.add('hidden');
+            aktifOyuncuIndeksi = 0;
+            turBaslat();
+        }
+
+        // 3. Sıradaki Oyuncunun Turunu Başlat
+        function turBaslat() {
+            if (aktifOyuncuIndeksi >= oyuncular.length) {
+                oyunuBitir();
+                return;
+            }
+
+            const aktifOyuncu = oyuncular[aktifOyuncuIndeksi];
+            aktifPuan = 0;
+            kalanZaman = 15;
+
+            document.getElementById('aktif-oyuncu-adi').innerText = `Oyuncu: ${aktifOyuncu.isim}`;
+            document.getElementById('guncel-puan').innerText = `Puan: 0`;
+            document.getElementById('kalan-sure').innerText = `Süre: 15`;
+
+            // Oyuncu hazır olması için uyarı verir
+            alert(`Sıra sende: ${aktifOyuncu.isim}! Hazırsan Tamam'a bas ve başla.`);
+
+            oyunEkrani.classList.remove('hidden');
+            oyunDongusunuBaslat();
+            kutuOlustur();
+        }
+
+        // Süre Sayacı
+        function oyunDongusunuBaslat() {
+            oyunZamanlayici = setInterval(() => {
+                kalanZaman--;
+                document.getElementById('kalan-sure').innerText = `Süre: ${kalanZaman}`;
+
+                if (kalanZaman <= 0) {
+                    clearInterval(oyunZamanlayici);
+                    clearTimeout(kutuZamanlayici);
+                    if (mevcutKutu) mevcutKutu.remove()
+
+                    // Oyuncunun puanını kaydet ve diğer oyuncuya geç
+                    oyuncular[aktifOyuncuIndeksi].puan = aktifPuan;
+                    aktifOyuncuIndeksi++;
+
+                    oyunEkrani.classList.add('hidden');
+                    setTimeout(turBaslat, 500); // Kısa bir gecikme ile diğer tura geç
+                }
+            }, 1000);
+        }
+
+        // Rastgele Kutu Çıkarma
+        function kutuOlustur() {
+            if (mevcutKutu) mevcutKutu.remove();
+
+            const kutu = document.createElement('div');
+            kutu.classList.add('kutu');
+
+            // Rastgele renk ataması (opsiyonel, oyunu eğlenceli kılar)
+            const renkler = ['#dc3545', '#007bff', '#28a745', '#ffc107', '#17a2b8', '#6610f2'];
+            kutu.style.backgroundColor = renkler[Math.floor(Math.random() * renkler.length)];
+
+            // Oyun alanının boyutlarına göre rastgele konum
+            const maxX = oyunAlani.clientWidth - 50; // Kutunun Genişliği
+            const maxY = oyunAlani.clientHeight - 50; // Kutunun Yüksekliği
+
+            const rastgeleX = Math.floor(Math.random() * maxX);
+            const rastgeleY = Math.floor(Math.random() * maxY);
+
+            kutu.style.left = rastgeleX + 'px';
+            kutu.style.top = rastgeleY + 'px';
+
+            // Tıklama Olayı
+            kutu.onmousedown = () => {
+                aktifPuan++;
+                document.getElementById('guncel-puan').innerText = `Puan: ${aktifPuan}`;
+                clearTimeout(kutuZamanlayici); // Kutunun kendi kendine yok olma süresini iptal et
+                kutuOlustur(); // Tıklandığı an yenisini oluştur
+            };
+
+            oyunAlani.appendChild(kutu);
+            mevcutKutu = kutu;
+
+            // Zorluk derecesine göre ekranda kalma süresini
+            kutuZamanlayici = setTimeout(() => {
+                kutuOlustur(); // Oyuncu tıklayamazsa süre bitince yenisini oluştur
+            }, zorlukSuresi);
+        }
+
+        // 4. Oyunu Bitir ve Liderlik Tablosunu Göster
+        function oyunuBitir() {
+            oyunEkrani.classList.add('hidden');
+            sonucEkrani.classList.remove('hidden');
+
+            // Oyuncuları puanlarına göre büyükten küçüğe sırala
+            oyuncular.sort((a, b) => b.puan - a.puan);
+
+            const tablo = document.getElementById('liderlik-tablosu');
+            tablo.innerHTML = '';
+
+            oyuncular.forEach((oyuncu, index) => {
+                const li = document.createElement('li');
+                if (index === 0) {
+                    li.className = 'birinci';
+                    li.innerText = `🏆 1. ${oyuncu.isim} - ${oyuncu.puan} Puan`;
+                } else {
+                    li.className = 'digerleri';
+                    li.innerText = `${index + 1}. ${oyuncu.isim} - ${oyuncu.puan} Puan`;
+                }
+                tablo.appendChild(li);
+            });
+        }
+    </script>
+
+</body>
+</html>
